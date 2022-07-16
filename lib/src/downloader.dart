@@ -19,11 +19,13 @@ typedef DownloadCallback = void Function(
 /// Provides access to all functions of the plugin in a single place.
 class FlutterDownloader {
   static const _channel = MethodChannel('vn.hunghd/downloader');
-  
+
   static bool _initialized = false;
+
   static bool get initialized => _initialized;
-  
+
   static bool _debug = false;
+
   static bool get debug => _debug;
 
   /// Initializes the plugin. This must be called before any other method.
@@ -89,6 +91,7 @@ class FlutterDownloader {
     String? fileName,
     Map<String, String>? headers,
     bool showNotification = true,
+    bool showForegroundNotification = false,
     bool openFileFromNotification = true,
     bool requiresStorageNotLow = true,
     bool saveInPublicStorage = false,
@@ -112,6 +115,7 @@ class FlutterDownloader {
         'file_name': fileName,
         'headers': headerBuilder.toString(),
         'show_notification': showNotification,
+        'show_foreground_notification': showForegroundNotification,
         'open_file_from_notification': openFileFromNotification,
         'requires_storage_not_low': requiresStorageNotLow,
         'save_in_public_storage': saveInPublicStorage,

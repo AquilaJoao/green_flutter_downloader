@@ -16,19 +16,21 @@ import android.database.Cursor;
 import android.media.MediaScannerConnection;
 import android.net.Uri;
 import android.os.Build;
-
-import androidx.annotation.NonNull;
-import androidx.core.app.NotificationCompat;
-import androidx.core.app.NotificationManagerCompat;
-import androidx.core.content.ContextCompat;
-
 import android.os.Environment;
 import android.os.Handler;
 import android.provider.MediaStore;
 import android.text.TextUtils;
 import android.util.Log;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
+import androidx.core.app.NotificationCompat;
+import androidx.core.app.NotificationManagerCompat;
+import androidx.core.content.ContextCompat;
+import androidx.work.ForegroundInfo;
+import androidx.work.WorkManager;
+import androidx.work.Worker;
+import androidx.work.WorkerParameters;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -38,7 +40,6 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-//import java.net.HttpURLConnection;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLDecoder;
@@ -52,9 +53,6 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
-import androidx.work.Worker;
-import androidx.work.WorkerParameters;
 
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.HttpsURLConnection;
@@ -76,6 +74,7 @@ public class DownloadWorker extends Worker implements MethodChannel.MethodCallHa
     public static final String ARG_HEADERS = "headers";
     public static final String ARG_IS_RESUME = "is_resume";
     public static final String ARG_SHOW_NOTIFICATION = "show_notification";
+    public static final String ARG_SHOW_FOREGROUND_NOTIFICATION = "show_foreground_notification";
     public static final String ARG_OPEN_FILE_FROM_NOTIFICATION = "open_file_from_notification";
     public static final String ARG_CALLBACK_HANDLE = "callback_handle";
     public static final String ARG_DEBUG = "debug";
@@ -99,6 +98,7 @@ public class DownloadWorker extends Worker implements MethodChannel.MethodCallHa
     private TaskDbHelper dbHelper;
     private TaskDao taskDao;
     private boolean showNotification;
+    private boolean showForegroundNotification;
     private boolean clickToOpenDownloadedFile;
     private boolean debug;
     private boolean ignoreSsl;
@@ -173,9 +173,11 @@ public class DownloadWorker extends Worker implements MethodChannel.MethodCallHa
         }
     }
 
+
     @NonNull
     @Override
     public Result doWork() {
+
         Context context = getApplicationContext();
         dbHelper = TaskDbHelper.getInstance(context);
         taskDao = new TaskDao(dbHelper);
@@ -207,6 +209,7 @@ public class DownloadWorker extends Worker implements MethodChannel.MethodCallHa
         }
 
         showNotification = getInputData().getBoolean(ARG_SHOW_NOTIFICATION, false);
+        showForegroundNotification = getInputData().getBoolean(ARG_SHOW_FOREGROUND_NOTIFICATION, false);
         clickToOpenDownloadedFile = getInputData().getBoolean(ARG_OPEN_FILE_FROM_NOTIFICATION, false);
         saveInPublicStorage = getInputData().getBoolean(ARG_SAVE_IN_PUBLIC_STORAGE, false);
 
@@ -215,6 +218,19 @@ public class DownloadWorker extends Worker implements MethodChannel.MethodCallHa
         setupNotification(context);
 
         updateNotification(context, filename == null ? url : filename, DownloadStatus.RUNNING, task.progress, null, false);
+
+     /*   if (showForegroundNotification) {
+
+            try {
+                Log.d("MS-", "Thread started");
+
+                Thread.sleep((1000 * 60) * 15);
+                Log.d("MS-", "Thread completed");
+
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }*/
         taskDao.updateTask(getId().toString(), DownloadStatus.RUNNING, task.progress);
 
         //automatic resume for partial files. (if the workmanager unexpectedly quited in background)
@@ -222,7 +238,7 @@ public class DownloadWorker extends Worker implements MethodChannel.MethodCallHa
         File partialFile = new File(saveFilePath);
         if (partialFile.exists()) {
             isResume = true;
-            log("exists file for "+ filename + "automatic resuming...");
+            log("exists file for " + filename + "automatic resuming...");
         }
 
         try {
@@ -280,7 +296,6 @@ public class DownloadWorker extends Worker implements MethodChannel.MethodCallHa
         long downloadedBytes = 0;
         int responseCode;
         int times;
-
         visited = new HashMap<>();
 
         try {
@@ -298,14 +313,14 @@ public class DownloadWorker extends Worker implements MethodChannel.MethodCallHa
 
                 resourceUrl = new URL(url);
 
-                if(ignoreSsl) {
+                if (ignoreSsl) {
                     trustAllHosts();
                     if (resourceUrl.getProtocol().toLowerCase().equals("https")) {
-                        HttpsURLConnection https = (HttpsURLConnection)resourceUrl.openConnection();
+                        HttpsURLConnection https = (HttpsURLConnection) resourceUrl.openConnection();
                         https.setHostnameVerifier(DO_NOT_VERIFY);
                         httpConn = https;
                     } else {
-                        httpConn = (HttpURLConnection)resourceUrl.openConnection();
+                        httpConn = (HttpURLConnection) resourceUrl.openConnection();
                     }
                 } else {
                     httpConn = (HttpsURLConnection) resourceUrl.openConnection();
@@ -613,14 +628,36 @@ public class DownloadWorker extends Worker implements MethodChannel.MethodCallHa
 
         // Show the notification
         if (showNotification) {
-            // Create the notification
-            NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID).
-                    setContentTitle(title)
-                    .setContentIntent(intent)
-                    .setOnlyAlertOnce(true)
-                    .setAutoCancel(true)
-                    .setPriority(NotificationCompat.PRIORITY_LOW);
 
+            PendingIntent cancelPendingIntent = WorkManager.getInstance(context)
+                    .createCancelPendingIntent(getId());
+
+            NotificationCompat.Builder builder;
+            if (showForegroundNotification) {
+                Log.d("MS-4495", "Foreground notification");
+                builder = new NotificationCompat.Builder(context, CHANNEL_ID)
+                        .setContentTitle(title)
+                        .setOnlyAlertOnce(true)
+//                        .setAutoCancel(true)
+                        .setTicker(title);
+//                        .setSmallIcon(android.R.drawable.ic_media_play);
+//                        .setOngoing(true);
+            } else {
+                // Add the cancel action to the notification which can
+                // be used to cancel the worker
+//                    .addAction(android.R.drawable.ic_delete, "Cancel", cancelPendingIntent);
+//                    .build();
+
+                // Create the notification
+                Log.d("MS-4495", "Normal notification");
+
+                builder = new NotificationCompat.Builder(context, CHANNEL_ID).
+                        setContentTitle(title)
+                        .setContentIntent(intent)
+                        .setOnlyAlertOnce(true)
+                        .setAutoCancel(true)
+                        .setPriority(NotificationCompat.PRIORITY_LOW);
+            }
             if (status == DownloadStatus.RUNNING) {
                 if (progress <= 0) {
                     builder.setContentText(msgStarted)
@@ -636,6 +673,10 @@ public class DownloadWorker extends Worker implements MethodChannel.MethodCallHa
                     builder.setContentText(msgComplete).setProgress(0, 0, false);
                     builder.setOngoing(false)
                             .setSmallIcon(android.R.drawable.stat_sys_download_done);
+                }
+                if (showForegroundNotification) {
+                    setForegroundAsync(new ForegroundInfo(primaryId, builder.build()));
+                    return;
                 }
             } else if (status == DownloadStatus.CANCELED) {
                 builder.setContentText(msgCanceled).setProgress(0, 0, false);
@@ -818,10 +859,10 @@ public class DownloadWorker extends Worker implements MethodChannel.MethodCallHa
     private static void trustAllHosts() {
         final String TAG = "trustAllHosts";
         // Create a trust manager that does not validate certificate chains
-        TrustManager[] trustManagers = new TrustManager[] { new X509TrustManager() {
+        TrustManager[] trustManagers = new TrustManager[]{new X509TrustManager() {
 
             public java.security.cert.X509Certificate[] getAcceptedIssuers() {
-                return new java.security.cert.X509Certificate[] {};
+                return new java.security.cert.X509Certificate[]{};
             }
 
             public void checkClientTrusted(X509Certificate[] chain, String authType) {
@@ -831,7 +872,7 @@ public class DownloadWorker extends Worker implements MethodChannel.MethodCallHa
             public void checkServerTrusted(X509Certificate[] chain, String authType) {
                 Log.i(TAG, "checkServerTrusted");
             }
-        } };
+        }};
 
         // Install the all-trusting trust manager
         try {
