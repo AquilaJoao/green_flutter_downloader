@@ -109,17 +109,22 @@ class FlutterDownloader {
       headerBuilder.write('}');
     }
     try {
-      String? taskId = await _channel.invokeMethod('enqueue', {
+      var argument = {
         'url': url,
         'saved_dir': savedDir,
         'file_name': fileName,
         'headers': headerBuilder.toString(),
         'show_notification': showNotification,
-        'show_foreground_notification': showForegroundNotification,
         'open_file_from_notification': openFileFromNotification,
         'requires_storage_not_low': requiresStorageNotLow,
         'save_in_public_storage': saveInPublicStorage,
-      });
+      };
+
+      if (Platform.isAndroid) {
+        argument.putIfAbsent(
+            "show_foreground_notification", () => showForegroundNotification);
+      }
+      String? taskId = await _channel.invokeMethod('enqueue', argument);
       return taskId;
     } on PlatformException catch (e) {
       _log('Download task is failed with reason(${e.message})');
