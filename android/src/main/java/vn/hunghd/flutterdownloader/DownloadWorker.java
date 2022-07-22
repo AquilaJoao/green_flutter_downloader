@@ -636,7 +636,7 @@ public class DownloadWorker extends Worker implements MethodChannel.MethodCallHa
 
             NotificationCompat.Builder builder;
             if (showForegroundNotification) {
-                Log.d("MS-4495", "Foreground notification");
+                Log.d("MS-4495", "MS-Foreground notification");
                 builder = new NotificationCompat.Builder(context, CHANNEL_ID)
                         .setContentTitle(title)
                         .setOnlyAlertOnce(true)

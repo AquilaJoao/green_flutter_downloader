@@ -36,7 +36,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
     _bindBackgroundIsolate();
 
-    FlutterDownloader.registerCallback(downloadCallback, step: 1);
+    FlutterDownloader.registerCallback(downloadCallback, step: 10);
 
     _loading = true;
     _permissionReady = false;

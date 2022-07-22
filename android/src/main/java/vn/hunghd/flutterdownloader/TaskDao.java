@@ -35,8 +35,7 @@ public class TaskDao {
     }
 
     public void insertOrUpdateNewTask(String taskId, String url, int status, int progress, String fileName,
-                                      String savedDir, String headers, boolean showNotification, boolean showForegroundNotification, boolean openFileFromNotification, boolean saveInPublicStorage) {
-                                       String savedDir, String headers, boolean showNotification, boolean openFileFromNotification, String notificationTitle, boolean saveInPublicStorage) {
+                                      String savedDir, String headers, boolean showNotification, boolean showForegroundNotification, boolean openFileFromNotification, String notificationTitle,boolean saveInPublicStorage) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
 
         ContentValues values = new ContentValues();
